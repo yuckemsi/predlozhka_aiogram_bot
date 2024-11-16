@@ -11,8 +11,6 @@ import app.keyboards as kb
 import re
 import asyncio
 
-from app.keyboards import channels_setting
-
 rt = Router()
 
 class Post(StatesGroup):
@@ -44,8 +42,15 @@ async def post(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.answer('Вы нажали кнопку написания поста')
     await state.set_state(Post.post)
-    await callback.message.answer('Пришли свой пост ниже(аудио, видео, фото, текст не более 150 символов)')
+    await callback.message.answer('ПРИШЛИ СВОЙ ПОСТ\nаудио, видео, фото, текст не более 150 символов\n\n/cancel - отменить отправку поста')
 
+@rt.message(Command('cancel'))
+async def cancel_post(message: Message, state: FSMContext):
+    if state is None:
+        pass
+
+    await state.clear()
+    await message.answer('Вы отменили пост!', reply_markup=await kb.get_main(tg_id=message.from_user.id))
 
 @rt.message(Post.post, F.photo)
 async def photo_message(message: Message, state: FSMContext):
@@ -112,14 +117,6 @@ async def admin_panel(callback: CallbackQuery):
     if admin == False:
         await callback.message.answer('Ты не админ!')
 
-@rt.callback_query(F.data=='to_main')
-async def main(callback: CallbackQuery):
-    await callback.answer('Вы вернулись в главное меню')
-    tg_id = callback.from_user.id
-    first_name = callback.from_user.first_name
-    await db.set_user(tg_id, first_name)
-    await  callback.message.answer('Бот-предложка работает!(с функциями админа)', reply_markup=await kb.get_main(tg_id))
-
 @rt.callback_query(F.data=='check_posts')
 async def all_posts(callback: CallbackQuery):
     await callback.answer('Вы нажали на проверку постов')
@@ -150,15 +147,38 @@ async def all_posts(callback: CallbackQuery):
             else:
                 await callback.message.answer_video(video=f'{video_id}', caption=f'👤 {first_name}\n\n{caption}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0]))
 
+@rt.callback_query(F.data=='to_main')
+async def main(callback: CallbackQuery):
+    await callback.answer('Вы вернулись в главное меню')
+    tg_id = callback.from_user.id
+    first_name = callback.from_user.first_name
+    await db.set_user(tg_id, first_name)
+    await  callback.message.answer('Бот-предложка работает!(с функциями админа)', reply_markup=await kb.get_main(tg_id))
+
+@rt.callback_query(F.data == 'channels')
+async def manage_channels(callback: CallbackQuery):
+    await callback.answer('')
+    await callback.message.answer('Выберите канал:', reply_markup=await kb.manage_channels())
+
 @rt.callback_query(F.data.startswith('ban_'))
 async def ban(callback: CallbackQuery):
     await callback.answer('Вы нажали кнопку бана!')
     tg_id = callback.data.split('_')[1]
+    await callback.message.delete()
     ban = await db.ban_user(tg_id)
     if ban == True:
         await callback.message.answer('Пользователь уже забанен!')
     if ban == False:
         await callback.message.answer('Пользователь забанен!')
+    await db.delete_user_posts(tg_id)
+
+@rt.callback_query(F.data.startswith('channel_'))
+async def manage_channel(callback: CallbackQuery):
+    channel_id = callback.data.split('_')[1]
+    print(channel_id)
+    channel = await db.get_channel(channel_id)
+    await callback.answer(f'Ты выбрал {channel[2]}')
+    await callback.message.answer(f'Управление каналом: {channel[2]}', reply_markup = await manage_channel(channel_id))
 
 @rt.callback_query(F.data.startswith('delete_'))
 async def ban(callback: CallbackQuery):
@@ -201,14 +221,38 @@ async def post_in_channel(callback: CallbackQuery, bot: Bot):
     await callback.message.answer('Пост опубликован')
     await db.delete_post(post_id[1])
 
-@rt.message(Command('add_admin'))
+@rt.message(Command('admin'))
 async def new_admin(message: Message):
     text = message.text.split(maxsplit=1)[1]
     if message.from_user.id == 1175527638:
         add = await db.add_admin(tg_id=text)
         if add == True:
-            await message.answer('Админ был добавлен!')
+            await message.answer('Пользователь теперь админ!')
         if add == False:
             await message.answer('Этот пользователь уже админ!')
+    else:
+        await message.answer('Ты не админ!')
+
+@rt.message(Command('unadmin'))
+async def new_admin(message: Message):
+    text = message.text.split(maxsplit=1)[1]
+    if message.from_user.id == 1175527638:
+        admin = await db.delete_admin(tg_id=text)
+        if admin == True:
+            await message.answer('Пользователь больше не админ!')
+        if admin == False:
+            await message.answer('Этот пользователь не админ!')
+    else:
+        await message.answer('Ты не админ!')
+
+@rt.message(Command('unban'))
+async def new_admin(message: Message):
+    text = message.text.split(maxsplit=1)[1]
+    if message.from_user.id == 1175527638:
+        user_ban = await db.unban_user(tg_id=text)
+        if user_ban == True:
+            await message.answer('Пользователь разбанен!')
+        if user_ban == False:
+            await message.answer('Этот пользователь не в бане!')
     else:
         await message.answer('Ты не админ!')

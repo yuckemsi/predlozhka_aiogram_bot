@@ -11,13 +11,6 @@ admin_panel = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text='На главную', callback_data='to_main')]
 ])
 
-channels_setting = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text='Добавить канал', callback_data='add_channel')],
-    [InlineKeyboardButton(text='Удалить канал', callback_data='delete_channel')],
-    [InlineKeyboardButton(text='Список каналов', callback_data='all_channels')],
-    [InlineKeyboardButton(text='Админ-панель', callback_data='admin_panel')]
-    								])
-
 async def get_main(tg_id: int):
     is_user_admin = await db.check_admin(tg_id)
     if is_user_admin == True:
@@ -54,3 +47,20 @@ async def get_channels(post_id: int):
         channel_name = channels[channel[0]].get('channel_name')
         keyboard.add(InlineKeyboardButton(text=f'{channel_name}', callback_data=f'_{channel_id}.{post}'))
         return keyboard.adjust(1).as_markup()
+
+async def manage_channels():
+    channels = {}
+    all_channels = await db.all_channels()
+    for channel in all_channels:
+        channels.update({channel[0]: {'tg_id': channel[1], 'channel_name': channel[2]}})
+        keyboard = InlineKeyboardBuilder()
+        channel_id = channels[channel[0]].get('tg_id')
+        channel_name = channels[channel[0]].get('channel_name')
+        keyboard.add(InlineKeyboardButton(text=f'{channel_name}', callback_data=f'channel_{channel_id}'))
+        return keyboard.adjust(1).as_markup()
+
+async def manage_channel(channel_id: int):
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(InlineKeyboardButton(text='Удалить канал', callback_data=f'delete_{channel_id}'),InlineKeyboardButton(text='Список каналов', callback_data=f'channels'),InlineKeyboardButton(text='Админ-панель', callback_data=f'admin_panel'))
+    return keyboard.adjust(1)
+

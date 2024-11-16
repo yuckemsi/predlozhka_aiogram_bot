@@ -70,7 +70,7 @@ async def db_connect() -> None:
     db.commit()
 # ЮЗЕР ЗАПРОСЫ
 async def set_user(tg_id: int, first_name='') -> None:
-    user = cur.execute("SELECT * FROM users WHERE tg_id = {key}".format(key=tg_id)).fetchone()
+    user = cur.execute("SELECT * FROM users WHERE tg_id = (?)", (tg_id,)).fetchone()
 
     if not user:
         cur.execute('INSERT INTO users(tg_id, first_name) VALUES (?, ?)', (tg_id, first_name))
@@ -78,7 +78,7 @@ async def set_user(tg_id: int, first_name='') -> None:
         db.commit()
 
 async def ban_user(tg_id: int):
-    user = cur.execute("SELECT * FROM banlist WHERE tg_id = {key}".format(key=tg_id)).fetchone()
+    user = cur.execute("SELECT * FROM banlist WHERE tg_id = (?)", (tg_id, )).fetchone()
 
     if not user:
         cur.execute("INSERT INTO banlist(tg_id) VALUES (?)", (tg_id,))
@@ -88,13 +88,13 @@ async def ban_user(tg_id: int):
         return True
 
 async def unban_user(tg_id: int):
-    user = cur.execute("SELECT * FROM banlist WHERE tg_id = {key}".format(key=tg_id)).fetchone()
+    user = cur.execute("SELECT * FROM banlist WHERE tg_id = (?)", (tg_id, )).fetchone()
 
     if not user:
-        cur.execute("INSERT INTO banlist(tg_id) VALUES (?)", (tg_id,))
-        db.commit()
         return False
     else:
+        cur.execute('DELETE FROM banlist WHERE tg_id = (?)', (tg_id,))
+        db.commit()
         return True
 
 # ПОСТ ЗАПРОСЫ
@@ -125,9 +125,13 @@ async def get_post(post_id: int):
     post = cur.execute("SELECT * FROM posts WHERE id = (?)", (post_id,)).fetchone()
     db.commit()
     return post
+
+async def delete_user_posts(tg_id: int):
+    cur.execute('DELETE FROM posts WHERE tg_id = (?)', (tg_id,))
+    db.commit()
 # АДМИН ЗАПРОСЫ
 async def add_admin(tg_id: int):
-    user = cur.execute("SELECT * FROM admins WHERE tg_id = {key}".format(key=tg_id)).fetchone()
+    user = cur.execute("SELECT * FROM admins WHERE tg_id = (?)", (tg_id,)).fetchone()
 
     if not user:
         cur.execute("INSERT INTO admins(tg_id) VALUES (?)", (tg_id,))
@@ -137,11 +141,19 @@ async def add_admin(tg_id: int):
         return False
 
 async def delete_admin(tg_id: int):
-    cur.execute('DELETE FROM admins WHERE tg_id = (?)', (tg_id,))
-    db.commit()
+    user = cur.execute("SELECT * FROM admins WHERE tg_id = (?)", (tg_id,)).fetchone()
+
+    if not user:
+        return False
+    else:
+        cur.execute('DELETE FROM admins WHERE tg_id = (?)', (tg_id,))
+        db.commit()
+        return True
+
+
 
 async def check_admin(tg_id: int):
-    user = cur.execute("SELECT * FROM admins WHERE tg_id = {key}".format(key=tg_id)).fetchone()
+    user = cur.execute("SELECT * FROM admins WHERE tg_id = (?)", (tg_id,)).fetchone()
     db.commit()
 
     if not user:
@@ -150,7 +162,7 @@ async def check_admin(tg_id: int):
         return True
 # КАНАЛ ЗАПРОСЫ
 async def add_channel(tg_id: int, channel_name: str):
-    channel = cur.execute("SELECT * FROM channels WHERE tg_id = {key}".format(key=tg_id)).fetchone()
+    channel = cur.execute("SELECT * FROM channels WHERE tg_id = (?)", (tg_id,)).fetchone()
 
     if not channel:
         cur.execute("INSERT INTO channels(tg_id, channel_name) VALUES (?, ?)", (tg_id, channel_name))
@@ -159,6 +171,11 @@ async def add_channel(tg_id: int, channel_name: str):
 async def delete_channel(tg_id: int):
     cur.execute('DELETE FROM channels WHERE tg_id = (?)', (tg_id,))
     db.commit()
+
+async def get_channel(channel_id: int):
+    channel = cur.execute('SELECT * FROM channels WHERE tg_id = (?)', (channel_id,)).fetchone()
+    db.commit()
+    return channel
 
 async def all_channels():
     channels = cur.execute('SELECT * FROM channels').fetchall()
