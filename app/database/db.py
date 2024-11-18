@@ -26,11 +26,13 @@ async def db_connect() -> None:
             CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY,
             tg_id INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
             first_name TEXT,
             media_id TEXT, 
             caption TEXT,
             type INT,
             FOREIGN KEY (tg_id) REFERENCES users (tg_id),
+            FOREIGN KEY (channel_id) REFERENCES channels (tg_id),
             FOREIGN KEY (first_name) REFERENCES users (first_name),
             FOREIGN KEY (type) REFERENCES types (id)
             );
@@ -77,6 +79,24 @@ async def set_user(tg_id: int, first_name='') -> None:
 
         db.commit()
 
+async def check_username(tg_id: int, first_name: str):
+    name = cur.execute("SELECT first_name FROM users WHERE tg_id = (?)", (tg_id,)).fetchone()
+
+    if name != first_name:
+        cur.execute('UPDATE users SET first_name = (?) WHERE tg_id = (?)', (first_name, tg_id))
+        db.commit()
+        return True
+    else:
+        return False
+
+async def check_ban(tg_id: int):
+    user = cur.execute("SELECT * FROM banlist WHERE tg_id = (?)", (tg_id,)).fetchone()
+
+    if not user:
+        return False
+    else:
+        return True
+
 async def ban_user(tg_id: int):
     user = cur.execute("SELECT * FROM banlist WHERE tg_id = (?)", (tg_id, )).fetchone()
 
@@ -98,17 +118,17 @@ async def unban_user(tg_id: int):
         return True
 
 # ПОСТ ЗАПРОСЫ
-async def create_post(tg_id: int, first_name: str, caption: str, post_type: int, media_id=''):
+async def create_post(tg_id: int, channel_id: int, first_name: str, caption: str, post_type: int, media_id='',):
     if not media_id:
-        cur.execute('INSERT INTO posts(tg_id, type, first_name, caption) VALUES(?, ?, ?, ?)', (tg_id, post_type, first_name, caption))
+        cur.execute('INSERT INTO posts(tg_id, channel_id, type, first_name, caption) VALUES(?, ?, ?, ?, ?)', (tg_id, channel_id, post_type, first_name, caption))
     elif len(media_id) > 2:
-        cur.execute('INSERT INTO posts(tg_id, type, first_name, caption, media_id) VALUES(?, ?, ?, ?, ?)', (tg_id, post_type, first_name, caption, media_id))
+        cur.execute('INSERT INTO posts(tg_id, channel_id, type, first_name, caption, media_id) VALUES(?, ?, ?, ?, ?, ?)', (tg_id, channel_id, post_type, first_name, caption, media_id))
     else:
         return 'Недостаточно данных для создания поста'
     db.commit()
 
 async def delete_post(post_id: int):
-    cur.execute('DELETE FROM posts WHERE id = (?)', post_id)
+    cur.execute('DELETE FROM posts WHERE id = (?)', (post_id,))
     db.commit()
 
 async def get_all_posts():
@@ -130,11 +150,11 @@ async def delete_user_posts(tg_id: int):
     cur.execute('DELETE FROM posts WHERE tg_id = (?)', (tg_id,))
     db.commit()
 # АДМИН ЗАПРОСЫ
-async def add_admin(tg_id: int):
+async def add_admin(tg_id: int, first_name: str):
     user = cur.execute("SELECT * FROM admins WHERE tg_id = (?)", (tg_id,)).fetchone()
 
     if not user:
-        cur.execute("INSERT INTO admins(tg_id) VALUES (?)", (tg_id,))
+        cur.execute("INSERT INTO admins(tg_id, first_name) VALUES (?, ?)", (tg_id, first_name))
         db.commit()
         return True
     else:
@@ -149,8 +169,6 @@ async def delete_admin(tg_id: int):
         cur.execute('DELETE FROM admins WHERE tg_id = (?)', (tg_id,))
         db.commit()
         return True
-
-
 
 async def check_admin(tg_id: int):
     user = cur.execute("SELECT * FROM admins WHERE tg_id = (?)", (tg_id,)).fetchone()
@@ -168,8 +186,8 @@ async def add_channel(tg_id: int, channel_name: str):
         cur.execute("INSERT INTO channels(tg_id, channel_name) VALUES (?, ?)", (tg_id, channel_name))
         db.commit()
 
-async def delete_channel(tg_id: int):
-    cur.execute('DELETE FROM channels WHERE tg_id = (?)', (tg_id,))
+async def delete_channel(channel_id: int):
+    cur.execute('DELETE FROM channels WHERE tg_id = (?)', (channel_id,))
     db.commit()
 
 async def get_channel(channel_id: int):

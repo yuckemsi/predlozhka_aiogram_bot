@@ -6,61 +6,63 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 import app.database.db as db
 
 admin_panel = InlineKeyboardMarkup(inline_keyboard=[
-	[InlineKeyboardButton(text='Проверить посты', callback_data='check_posts')],
-    [InlineKeyboardButton(text='Управлять каналами', callback_data='channels')],
-    [InlineKeyboardButton(text='На главную', callback_data='to_main')]
+	[InlineKeyboardButton(text='✉️ Проверить посты', callback_data='check_posts')],
+    [InlineKeyboardButton(text='📍 Управлять каналами', callback_data='channels')],
+    [InlineKeyboardButton(text='⬅️ На главную', callback_data='to_main')]
+])
+
+to_main = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text='⬅️ На главную', callback_data='to_main')]
 ])
 
 async def get_main(tg_id: int):
     is_user_admin = await db.check_admin(tg_id)
     if is_user_admin == True:
         admin_main = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='Отправить пост', callback_data='send_post')],
-            [InlineKeyboardButton(text='Помощь', callback_data='help'),
-             InlineKeyboardButton(text='Правила написания постов', callback_data='rules')],
-            [InlineKeyboardButton(text='Контакты', callback_data='contacts')],
-            [InlineKeyboardButton(text='Админ-панель', callback_data='admin_panel')]
+            [InlineKeyboardButton(text='👆 Отправить пост', callback_data='send_post')],
+            [InlineKeyboardButton(text='❓ Помощь', callback_data='help'),
+             InlineKeyboardButton(text='📚 Правила постов', callback_data='rules')],
+            [InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')],
+            [InlineKeyboardButton(text='📍 Админ-панель', callback_data='admin_panel')]
         ])
         return admin_main
     if is_user_admin == False:
         main = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='Отправить пост', callback_data='send_post')],
-            [InlineKeyboardButton(text='Помощь', callback_data='help'),
-             InlineKeyboardButton(text='Правила написания постов', callback_data='rules')],
-            [InlineKeyboardButton(text='Контакты', callback_data='contacts')],
+            [InlineKeyboardButton(text='👆 Отправить пост', callback_data='send_post')],
+            [InlineKeyboardButton(text='❓ Помощь', callback_data='help'),
+             InlineKeyboardButton(text='📚 Правила постов', callback_data='rules')],
+            [InlineKeyboardButton(text='📞 Контакты', callback_data='contacts')],
         ])
         return main
 
-async def post_settings(tg_id: int, post_id: int):
+async def post_settings(tg_id: int, post_id: int, channel_id):
     keyboard = InlineKeyboardBuilder()
-    keyboard.add(InlineKeyboardButton(text='⛔️', callback_data=f'ban_{tg_id}'),InlineKeyboardButton(text='❌', callback_data=f'delete_{post_id}'),InlineKeyboardButton(text='✅', callback_data=f'on_post-{post_id}'),InlineKeyboardButton(text='👤', url=f'tg://user?id={tg_id}'))
+    keyboard.add(InlineKeyboardButton(text='⛔️', callback_data=f'ban_{tg_id}'),InlineKeyboardButton(text='❌', callback_data=f'delete_{post_id}'),InlineKeyboardButton(text='✅', callback_data=f'_{channel_id}.{post_id}'),InlineKeyboardButton(text='👤', url=f'tg://user?id={tg_id}'))
     return keyboard.as_markup()
 
-async def get_channels(post_id: int):
+async def choose_channel():
     channels = {}
     all_channels = await db.all_channels()
-    post = await db.get_post_id(post_id)
+    keyboard = InlineKeyboardBuilder()
     for channel in all_channels:
         channels.update({channel[0]: {'tg_id': channel[1], 'channel_name': channel[2]}})
-        keyboard = InlineKeyboardBuilder()
         channel_id = channels[channel[0]].get('tg_id')
         channel_name = channels[channel[0]].get('channel_name')
-        keyboard.add(InlineKeyboardButton(text=f'{channel_name}', callback_data=f'_{channel_id}.{post}'))
-        return keyboard.adjust(1).as_markup()
+        keyboard.add(InlineKeyboardButton(text=f'{channel_name}', callback_data=f'to_{channel_id}'))
+    return keyboard.adjust(1).as_markup()
 
 async def manage_channels():
     channels = {}
     all_channels = await db.all_channels()
+    keyboard = InlineKeyboardBuilder()
     for channel in all_channels:
         channels.update({channel[0]: {'tg_id': channel[1], 'channel_name': channel[2]}})
-        keyboard = InlineKeyboardBuilder()
         channel_id = channels[channel[0]].get('tg_id')
         channel_name = channels[channel[0]].get('channel_name')
-        keyboard.add(InlineKeyboardButton(text=f'{channel_name}', callback_data=f'channel_{channel_id}'))
-        return keyboard.adjust(1).as_markup()
+        keyboard.add(InlineKeyboardButton(text=f'📍 {channel_name}', callback_data=f'channel_{channel_id}'))
+    return keyboard.adjust(1).as_markup()
 
 async def manage_channel(channel_id: int):
     keyboard = InlineKeyboardBuilder()
-    keyboard.add(InlineKeyboardButton(text='Удалить канал', callback_data=f'delete_{channel_id}'),InlineKeyboardButton(text='Список каналов', callback_data=f'channels'),InlineKeyboardButton(text='Админ-панель', callback_data=f'admin_panel'))
-    return keyboard.adjust(1)
-
+    keyboard.add(InlineKeyboardButton(text='❌ Удалить канал', callback_data=f'delete-channel_{channel_id}'),InlineKeyboardButton(text='📍 Список каналов', callback_data=f'channels'),InlineKeyboardButton(text='Админ-панель', callback_data=f'admin_panel'))
+    return keyboard.adjust(1).as_markup()
