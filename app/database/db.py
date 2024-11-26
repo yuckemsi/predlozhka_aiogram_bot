@@ -117,6 +117,11 @@ async def unban_user(tg_id: int):
         db.commit()
         return True
 
+async def banlist():
+    bans = cur.execute('SELECT * FROM banlist').fetchall()
+    db.commit()
+    return bans
+
 # ПОСТ ЗАПРОСЫ
 async def create_post(tg_id: int, channel_id: int, first_name: str, caption: str, post_type: int, media_id='',):
     if not media_id:

@@ -7,13 +7,27 @@ import app.database.db as db
 
 admin_panel = InlineKeyboardMarkup(inline_keyboard=[
 	[InlineKeyboardButton(text='✉️ Проверить посты', callback_data='check_posts')],
+    [InlineKeyboardButton(text='👤 Все пользователи', callback_data='all_users')],
+    [InlineKeyboardButton(text='⛔️ Банлист', callback_data='banlist')],
     [InlineKeyboardButton(text='📍 Управлять каналами', callback_data='channels')],
-    [InlineKeyboardButton(text='⬅️ На главную', callback_data='to_main')]
+    [InlineKeyboardButton(text='⬅️ На главную', callback_data='main')]
 ])
 
 to_main = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text='⬅️ На главную', callback_data='to_main')]
+    [InlineKeyboardButton(text='⬅️ На главную', callback_data='main')]
 ])
+
+async def banlist():
+    banlist = {}
+    all_bans = await db.banlist()
+    keyboard = InlineKeyboardBuilder()
+    for ban_user in all_bans:
+        banlist.update({ban_user[0]: {'tg_id': ban_user[1], 'first_name': ban_user[2]}})
+        tg_id = banlist[ban_user[0]].get('tg_id')
+        first_name = banlist[ban_user[0]].get('first_name')
+        keyboard.add(InlineKeyboardButton(text=f'{first_name}', url=f'tg://user?id={tg_id}'))
+    return keyboard.as_markup()
+
 
 async def get_main(tg_id: int):
     is_user_admin = await db.check_admin(tg_id)

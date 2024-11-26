@@ -5,14 +5,13 @@ from aiogram.types import Message, CallbackQuery, ContentType, ChatMemberUpdated
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-
 import app.database.db as db
 import app.keyboards as kb
 
 import re
 from app.middlewares import BanMiddleware, CheckFirstName
 
-
+import asyncio
 
 rt = Router()
 
@@ -46,11 +45,17 @@ async def bot_added(event: ChatMemberUpdated, bot: Bot):
     await bot.send_message(chat_id=1175527638, text=f"Бот удален из канала!\n Название: {event.chat.title}\n id: {event.chat.id}")
 
 @rt.callback_query(F.data == 'send_post')
-async def post(callback: CallbackQuery, state: FSMContext):
+async def post(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.message.delete()
     await callback.answer('Вы нажали кнопку написания поста')
     await state.set_state(Post.post)
-    await callback.message.answer('Выбери канал:\n\n/cancel - отменить пост', reply_markup = await kb.choose_channel())
+    channels = await db.all_channels()
+    if channels == []:
+        msg = await callback.message.answer('Нет доступных каналов для поста :(', reply_markup = kb.to_main)
+        await asyncio.sleep(5)
+        await bot.delete_message(callback.message.chat.id, msg.message_id)
+    else:
+        await callback.message.answer('Выбери канал:\n\n/cancel - отменить пост', reply_markup = await kb.choose_channel())
 
 @rt.message(Command('cancel'))
 async def cancel_post(message: Message, state: FSMContext):
@@ -70,7 +75,7 @@ async def channel_button(callback: CallbackQuery , state: FSMContext):
     await callback.message.answer('ПРИШЛИ СВОЙ ПОСТ\nвидео, фото, текст\n\n/cancel - отменить отправку поста')
 
 @rt.message(Post.post, F.photo)
-async def photo_message(message: Message, state: FSMContext):
+async def photo_message(message: Message, state: FSMContext, bot: Bot):
     if message.photo:
         await state.update_data('')
         tg_id = message.from_user.id
@@ -81,12 +86,14 @@ async def photo_message(message: Message, state: FSMContext):
         post_type = 2
         first_name = message.from_user.first_name
         await db.create_post(tg_id, channel_id, first_name, caption, post_type, media_id)
-        await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
+        msg = await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
+        await asyncio.sleep(5)
+        await bot.delete_message(message.chat.id, msg.message_id)
         await state.clear()
 
 
 @rt.message(Post.post, F.video)
-async def video_message(message: Message, state: FSMContext):
+async def video_message(message: Message, state: FSMContext, bot: Bot):
     if message.video:
         await state.update_data('')
         tg_id = message.from_user.id
@@ -97,12 +104,14 @@ async def video_message(message: Message, state: FSMContext):
         post_type = 3
         first_name = message.from_user.first_name
         await db.create_post(tg_id, channel_id, first_name, caption, post_type, media_id)
-        await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
+        msg = await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
+        await asyncio.sleep(5)
+        await bot.delete_message(message.chat.id, msg.message_id)
         await state.clear()
 
 
 @rt.message(Post.post, F.text)
-async def text_message(message: Message, state: FSMContext):
+async def text_message(message: Message, state: FSMContext, bot: Bot):
     if message.text:
         await state.update_data('')
         tg_id = message.from_user.id
@@ -112,7 +121,9 @@ async def text_message(message: Message, state: FSMContext):
         first_name = message.from_user.first_name
         post_type = 1
         await db.create_post(tg_id, channel_id, first_name, caption, post_type)
-        await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
+        msg = await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
+        await asyncio.sleep(5)
+        await bot.delete_message(message.chat.id, msg.message_id)
         await state.clear()
 
 @rt.callback_query(F.data=='help')
@@ -133,7 +144,7 @@ async def contacts(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer('<b>🤖 Разработчик бота:</b> @locustt\nАдминистрация канала:\n@smashloc\n@looooooooooooooolk\n@ateget\n\nВНИМАНИЕ, РАЗРАБОТЧИК БОТА НЕ ИМЕЕТ ОТНОШЕНИЯ К КАНАЛАМ И НЕ НЕСЕТ ОТВЕТСТВЕННОСТЬ ЗА ИХ ДЕЯТЕЛЬНОСТЬ', reply_markup=kb.to_main)
 
-@rt.callback_query(F.data=='to_main')
+@rt.callback_query(F.data=='main')
 async def main(callback: CallbackQuery):
     await callback.answer('Вы вернулись в главное меню')
     tg_id = callback.from_user.id
@@ -154,40 +165,43 @@ async def admin_panel(callback: CallbackQuery):
         await callback.message.answer('Ты не админ!')
 
 @rt.callback_query(F.data=='check_posts')
-async def all_posts(callback: CallbackQuery):
+async def all_posts(callback: CallbackQuery, bot: Bot):
     await callback.answer('Вы нажали на проверку постов')
     posts = {}
     all_posts = await db.get_all_posts()
-    for post in all_posts:
-        posts.update({post[0]: {'tg_id':post[1], 'channel_id': post[2], 'first_name':post[3], 'media_id':post[4], 'caption':post[5], 'type':post[6]}})
-        if posts[post[0]].get('type') == 1:
-            first_name = posts[post[0]].get('first_name')
-            caption = posts[post[0]].get('caption')
-            channel_id = posts[post[0]].get('channel_id')
-            channel = await db.get_channel(channel_id)
-            await callback.message.answer(f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
-        elif posts[post[0]].get('type') == 2:
-            first_name = posts[post[0]].get('first_name')
-            caption = posts[post[0]].get('caption')
-            photo_id = posts[post[0]].get('media_id')
-            channel_id = posts[post[0]].get('channel_id')
-            channel = await db.get_channel(channel_id)
-            if caption is None:
-                caption=''
-                await callback.message.answer_photo(photo=f'{photo_id}', caption=f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
-            else:
-                await callback.message.answer_photo(photo=f'{photo_id}', caption=f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
-        elif posts[post[0]].get('type') == 3:
-            first_name = posts[post[0]].get('first_name')
-            caption = posts[post[0]].get('caption')
-            video_id = posts[post[0]].get('media_id')
-            channel_id = posts[post[0]].get('channel_id')
-            channel = await db.get_channel(channel_id)
-            if caption is None:
-                caption = ''
-                await callback.message.answer_video(video=f'{video_id}', caption=f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
-            else:
-                await callback.message.answer_video(video=f'{video_id}', caption=f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
+    if all_posts == []:
+        msg = await callback.message.answer('Нет постов для проверки :(')
+        await asyncio.sleep(3)
+        await bot.delete_message(callback.message.chat.id, msg.message_id)
+    else:
+        for post in all_posts:
+            posts.update({post[0]: {'tg_id':post[1], 'channel_id': post[2], 'first_name':post[3], 'media_id':post[4], 'caption':post[5], 'type':post[6]}})
+            if posts[post[0]].get('type') == 1:
+                first_name = posts[post[0]].get('first_name')
+                caption = posts[post[0]].get('caption')
+                channel_id = posts[post[0]].get('channel_id')
+                channel = await db.get_channel(channel_id)
+                await callback.message.answer(f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
+            elif posts[post[0]].get('type') == 2:
+                first_name = posts[post[0]].get('first_name')
+                caption = posts[post[0]].get('caption')
+                photo_id = posts[post[0]].get('media_id')
+                channel_id = posts[post[0]].get('channel_id')
+                channel = await db.get_channel(channel_id)
+                if caption is None:
+                    await callback.message.answer_photo(photo=f'{photo_id}', caption=f'👤 {first_name}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
+                else:
+                    await callback.message.answer_photo(photo=f'{photo_id}', caption=f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
+            elif posts[post[0]].get('type') == 3:
+                first_name = posts[post[0]].get('first_name')
+                caption = posts[post[0]].get('caption')
+                video_id = posts[post[0]].get('media_id')
+                channel_id = posts[post[0]].get('channel_id')
+                channel = await db.get_channel(channel_id)
+                if caption is None:
+                    await callback.message.answer_video(video=f'{video_id}', caption=f'👤 {first_name}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
+                else:
+                    await callback.message.answer_video(video=f'{video_id}', caption=f'👤 {first_name}\n\n{caption}\n\nКанал: {channel[2]}', reply_markup=await kb.post_settings(tg_id=post[1], post_id=post[0], channel_id=channel_id))
 
 @rt.callback_query(F.data == 'channels')
 async def manage_channels(callback: CallbackQuery):
@@ -253,6 +267,15 @@ async def post_to_channel(callback: CallbackQuery, bot: Bot):
             await bot.send_video(chat_id=channel, video=f"{post_data[4]}", caption=f"{post_data[5]}")
     await db.delete_post(post_id[0])
     await callback.message.answer('Пост опубликован')
+
+@rt.callback_query(F.data=='all_users')
+async def get_users(callback: CallbackQuery):
+    await callback.answer('Вы нажали на список пользователей')
+
+@rt.callback_query(F.data=='banlist')
+async def bans(callback: CallbackQuery):
+    await callback.answer('Вы нажали на банлист')
+    await callback.message.answer('Банлист:', reply_markup=await kb.banlist())
 
 
 @rt.message(Command('admin'))
