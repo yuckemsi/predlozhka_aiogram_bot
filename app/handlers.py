@@ -28,8 +28,8 @@ async def start(message: Message):
     tg_id = message.from_user.id
     first_name = message.from_user.first_name
     await db.set_user(tg_id, first_name)
-    await message.answer(f'Привет, {first_name}!\n\nЯ бот-предложка группы каналов 3 школы, перед началом использования советую ознакомиться с правилами постов\n\nПриятного использования!❤️')
-    await message.answer('Бот работает исправно\nСкорее пиши самые свежие новости!', reply_markup=await kb.get_main(tg_id))
+    await message.answer(f'Привет, {first_name}!\n\nЭтот бот предназначен для предложки каналов, пиши пост в канал на который подписан!')
+    await message.answer('ПРЕДЛОЖКА БОТ', reply_markup=await kb.get_main(tg_id))
 
 @rt.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=JOIN_TRANSITION))
 async def bot_added(event: ChatMemberUpdated, bot: Bot):
@@ -121,28 +121,8 @@ async def text_message(message: Message, state: FSMContext, bot: Bot):
         first_name = message.from_user.first_name
         post_type = 1
         await db.create_post(tg_id, channel_id, first_name, caption, post_type)
-        msg = await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
-        await asyncio.sleep(5)
-        await bot.delete_message(message.chat.id, msg.message_id)
+        await message.answer("Твой пост был отправлен на проверку!", reply_markup=await kb.get_main(tg_id))
         await state.clear()
-
-@rt.callback_query(F.data=='help')
-async def help(callback: CallbackQuery):
-    await callback.answer('')
-    await callback.message.delete()
-    await callback.message.answer('<b>🤖 Разработчик бота:</b> @locustt\n\nПо всем вопросам, связанным с ботом, обращаться к нему', reply_markup=kb.to_main)
-
-@rt.callback_query(F.data=='rules')
-async def rules(callback: CallbackQuery):
-    await callback.answer('')
-    await callback.message.delete()
-    await callback.message.answer('⚠️ АДМИНИСТРАЦИЯ КАНАЛА НЕ НЕСЁТ ОТВЕСТВЕННОСТЬ ЗА ПУБЛИКАЦИЮ КОНТЕНТА\n⚠️ В случае грубых нарушений администрация оставляет за собой право забанить вас и закрыть доступ к боту!!!\n\n✅ Предлагая пост вы соглашаетесь с правилами:\n<b>КОРРЕКТНОСТЬ ЗАПИСИ</b>\n1. Никаких оскорблений на основе любых фактов(внешность, национальность и т.п.)\n2. 18+ контент строго запрещен(администрация осуждает подобный контент)\n<b>УДАЛЕНИЕ ЗАПИСИ</b>\nЕсли вы были опубликованы и недовольны записью, вы можете обратиться в администрацию каналов с адекватной просьбой об удалении. В случае, если в сторону администрации буду угрозы и оскорбления, она оставляет за собой право не удалять запись.', reply_markup=kb.to_main, parse_mode="html")
-
-@rt.callback_query(F.data=='contacts')
-async def contacts(callback: CallbackQuery):
-    await callback.answer('')
-    await callback.message.delete()
-    await callback.message.answer('<b>🤖 Разработчик бота:</b> @locustt\nАдминистрация канала:\n@smashloc\n@looooooooooooooolk\n@ateget\n\nВНИМАНИЕ, РАЗРАБОТЧИК БОТА НЕ ИМЕЕТ ОТНОШЕНИЯ К КАНАЛАМ И НЕ НЕСЕТ ОТВЕТСТВЕННОСТЬ ЗА ИХ ДЕЯТЕЛЬНОСТЬ', reply_markup=kb.to_main)
 
 @rt.callback_query(F.data=='main')
 async def main(callback: CallbackQuery):
@@ -210,13 +190,16 @@ async def manage_channels(callback: CallbackQuery):
     await callback.message.answer('Выберите канал:', reply_markup=await kb.manage_channels())
 
 @rt.callback_query(F.data.startswith('ban_'))
-async def ban(callback: CallbackQuery):
+async def ban(callback: CallbackQuery, bot: Bot):
     await callback.answer('Вы нажали кнопку бана!')
     tg_id = callback.data.split('_')[1]
+    user_id = await bot.get_chat(tg_id)
     await callback.message.delete()
-    ban = await db.ban_user(tg_id)
+    ban = await db.ban_user(tg_id, first_name=user_id.first_name)
     if ban == True:
-        await callback.message.answer('Пользователь уже забанен!')
+        msg = await callback.message.answer('Пользователь уже забанен!')
+        await asyncio.sleep(3)
+        await bot.delete_message(callback.message.chat.id, msg.message_id)
     if ban == False:
         await callback.message.answer('Пользователь забанен!')
     await db.delete_user_posts(tg_id)
@@ -238,11 +221,12 @@ async def ban(callback: CallbackQuery, bot: Bot):
     await callback.message.delete()
 
 @rt.callback_query(F.data.startswith('delete_'))
-async def ban(callback: CallbackQuery):
+async def ban(callback: CallbackQuery, bot: Bot):
+    await callback.message.delete()
+    await callback.answer('Пост удален!')
     post_id = callback.data.split('_')[1]
     await db.delete_post(post_id)
-    await callback.answer('Пост удален!')
-    await callback.message.delete()
+    
 
 @rt.callback_query(F.data.startswith('_'))
 async def post_to_channel(callback: CallbackQuery, bot: Bot):
@@ -250,8 +234,7 @@ async def post_to_channel(callback: CallbackQuery, bot: Bot):
     await callback.message.delete()
     channel = re.split('[_.]', callback.data)[1]
     post_get = re.split('[_.]', callback.data)[-1]
-    post_id = list(post_get)
-    post_by = await db.get_post(post_id=post_id[0])
+    post_by = await db.get_post(post_id=post_get)
     post_data = list(post_by)
     if post_data[-1] == 1:
         await bot.send_message(chat_id=channel, text=f"{post_data[5]}")
@@ -265,30 +248,75 @@ async def post_to_channel(callback: CallbackQuery, bot: Bot):
             await bot.send_video(chat_id=channel, video=f"{post_data[4]}")
         else:
             await bot.send_video(chat_id=channel, video=f"{post_data[4]}", caption=f"{post_data[5]}")
-    await db.delete_post(post_id[0])
-    await callback.message.answer('Пост опубликован')
+    await db.delete_post(post_get)
+    msg = await callback.message.answer('Пост опубликован')
+    await asyncio.sleep(3)
+    await bot.delete_message(callback.message.chat.id, msg.message_id)
 
 @rt.callback_query(F.data=='all_users')
-async def get_users(callback: CallbackQuery):
+async def get_users(callback: CallbackQuery, bot: Bot):
     await callback.answer('Вы нажали на список пользователей')
+    msg = await callback.message.answer('Список пользователей:', reply_markup=await kb.all_users())
+    await asyncio.sleep(20)
+    await bot.delete_message(callback.message.chat.id, msg.message_id)
+
+@rt.callback_query(F.data=='all_admins')
+async def get_users(callback: CallbackQuery, bot: Bot):
+    await callback.answer('Вы нажали на список админов')
+    msg = await callback.message.answer('Список админов:', reply_markup=await kb.admin_list())
+    await asyncio.sleep(20)
+    await bot.delete_message(callback.message.chat.id, msg.message_id)
 
 @rt.callback_query(F.data=='banlist')
-async def bans(callback: CallbackQuery):
+async def bans(callback: CallbackQuery, bot: Bot):
     await callback.answer('Вы нажали на банлист')
-    await callback.message.answer('Банлист:', reply_markup=await kb.banlist())
+    banlist = await db.banlist()
+    if banlist == []:
+        msg = await callback.message.answer('Нет забаненных пользователей!')
+        await asyncio.sleep(3)
+        await bot.delete_message(callback.message.chat.id, msg.message_id)
+    else:
+        msg = await callback.message.answer('Банлист:', reply_markup=await kb.banlist())
+        await asyncio.sleep(20)
+        await bot.delete_message(callback.message.chat.id, msg.message_id)
 
+@rt.message(Command('send'))
+async def sendall(message: Message, bot: Bot):
+    if message.from_user.id == 1175527638:
+        users = {}
+        all_users = await db.all_users()
+        text = message.text.split(maxsplit=1)[1]
+        for user in all_users:
+            try:
+                users.update({user[0]: {'tg_id': user[1], 'first_name': user[2]}})
+                tg_id = users[user[0]].get('tg_id')
+                await bot.send_message(chat_id=tg_id, text=text)
+            except aiogram.exceptions.TelegramForbiddenError:
+                pass
+
+        msg = await message.answer('Рассылка отправлена!')
+        await asyncio.sleep(5)
+        await bot.delete_message(message.chat.id, msg.message_id)
+    else:
+        msg = await message.answer('У тебя нет прав!')
+        await asyncio.sleep(5)
+        await bot.delete_message(message.chat.id, msg.message_id)
 
 @rt.message(Command('admin'))
 async def new_admin(message: Message, bot: Bot):
-    text = message.text.split(maxsplit=1)[1]
-    admin_id = await bot.get_chat(text)
     if message.from_user.id == 1175527638:
+        text = message.text.split(maxsplit=1)[1]
+        admin_id = await bot.get_chat(text)
         add = await db.add_admin(tg_id=text, first_name=admin_id.first_name)
         if add == True:
-            await message.answer('Пользователь теперь админ!')
+            msg = await message.answer('Пользователь теперь админ!')
             await bot.send_message(chat_id=text, text=f'Ты теперь админ!\nНазначил: @{message.from_user.username}')
+            await asyncio.sleep(3)
+            await bot.delete_message(message.chat.id, msg.message_id)
         if add == False:
-            await message.answer('Этот пользователь уже админ!')
+            msg = await message.answer('Этот пользователь уже админ!')
+            await asyncio.sleep(3)
+            await bot.delete_message(message.chat.id, msg.message_id)
     else:
         await message.answer('Ты не админ!')
 
@@ -300,19 +328,27 @@ async def new_admin(message: Message, bot: Bot):
         if admin == True:
             await message.answer('Пользователь больше не админ!')
             await bot.send_message(chat_id=text, text=f'Ты теперь не админ!\nСнял: @{message.from_user.username}')
+            await asyncio.sleep(3)
+            await bot.delete_message(message.chat.id, msg.message_id)
         if admin == False:
-            await message.answer('Этот пользователь не админ!')
+            msg = await message.answer('Этот пользователь не админ!')
+            await asyncio.sleep(3)
+            await bot.delete_message(message.chat.id, msg.message_id)
     else:
         await message.answer('Ты не админ!')
 
 @rt.message(Command('unban'))
-async def new_admin(message: Message):
+async def new_admin(message: Message, bot: Bot):
     text = message.text.split(maxsplit=1)[1]
     if message.from_user.id == 1175527638:
         user_ban = await db.unban_user(tg_id=text)
         if user_ban == True:
-            await message.answer('Пользователь разбанен!')
+            msg = await message.answer('Пользователь разбанен!')
+            await asyncio.sleep(3)
+            await bot.delete_message(message.chat.id, msg.message_id)
         if user_ban == False:
-            await message.answer('Этот пользователь не в бане!')
+            msg = await message.answer('Этот пользователь не в бане!')
+            await asyncio.sleep(3)
+            await bot.delete_message(message.chat.id, msg.message_id)
     else:
         await message.answer('Ты не админ!')

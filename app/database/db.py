@@ -37,6 +37,20 @@ async def db_connect() -> None:
             FOREIGN KEY (type) REFERENCES types (id)
             );
             '''
+    deleted_posts_query = '''CREATE TABLE IF NOT EXISTS deleted_posts (
+            id INTEGER,
+            tg_id INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
+            first_name TEXT,
+            media_id TEXT, 
+            caption TEXT,
+            type INT,
+            FOREIGN KEY (tg_id) REFERENCES users (tg_id),
+            FOREIGN KEY (channel_id) REFERENCES channels (tg_id),
+            FOREIGN KEY (first_name) REFERENCES users (first_name),
+            FOREIGN KEY (type) REFERENCES types (id)
+            );
+            '''
     banlist_query = '''
             CREATE TABLE IF NOT EXISTS banlist (
             id INTEGER PRIMARY KEY, 
@@ -62,6 +76,7 @@ async def db_connect() -> None:
     cur.execute(users_query)
     cur.execute(admins_query)  
     cur.execute(posts_query)
+    cur.execute(deleted_posts_query)
     cur.execute(banlist_query)
     cur.execute(channels_query)
     cur.execute(post_types_query)
@@ -97,11 +112,11 @@ async def check_ban(tg_id: int):
     else:
         return True
 
-async def ban_user(tg_id: int):
+async def ban_user(tg_id: int, first_name: str):
     user = cur.execute("SELECT * FROM banlist WHERE tg_id = (?)", (tg_id, )).fetchone()
 
     if not user:
-        cur.execute("INSERT INTO banlist(tg_id) VALUES (?)", (tg_id,))
+        cur.execute("INSERT INTO banlist(tg_id, first_name) VALUES (?, ?)", (tg_id, first_name))
         db.commit()
         return False
     else:
@@ -122,6 +137,11 @@ async def banlist():
     db.commit()
     return bans
 
+async def all_users():
+    users = cur.execute('SELECT * FROM users').fetchall()
+    db.commit()
+    return users
+
 # ПОСТ ЗАПРОСЫ
 async def create_post(tg_id: int, channel_id: int, first_name: str, caption: str, post_type: int, media_id='',):
     if not media_id:
@@ -133,6 +153,7 @@ async def create_post(tg_id: int, channel_id: int, first_name: str, caption: str
     db.commit()
 
 async def delete_post(post_id: int):
+    cur.execute("INSERT INTO deleted_posts SELECT * FROM posts WHERE id = (?)", (post_id, ))
     cur.execute('DELETE FROM posts WHERE id = (?)', (post_id,))
     db.commit()
 
@@ -183,6 +204,11 @@ async def check_admin(tg_id: int):
         return False
     else:
         return True
+    
+async def all_admins():
+    admins = cur.execute('SELECT * FROM admins').fetchall()
+    db.commit()
+    return admins
 # КАНАЛ ЗАПРОСЫ
 async def add_channel(tg_id: int, channel_name: str):
     channel = cur.execute("SELECT * FROM channels WHERE tg_id = (?)", (tg_id,)).fetchone()
